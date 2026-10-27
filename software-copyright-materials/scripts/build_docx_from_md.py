@@ -463,6 +463,23 @@ def force_black_xml(xml: str) -> str:
     return xml
 
 
+def replace_with_retry(tmp_path: Path, docx_path: Path, attempts: int = 10, delay: float = 0.5) -> None:
+    # Windows: 刚写出的 docx 可能被杀毒/索引服务瞬时锁定，os.replace 需要重试
+    import time
+
+    for _ in range(attempts):
+        try:
+            tmp_path.replace(docx_path)
+            return
+        except PermissionError:
+            time.sleep(delay)
+    try:
+        docx_path.unlink(missing_ok=True)
+    except PermissionError:
+        pass
+    tmp_path.replace(docx_path)
+
+
 def normalize_docx_text_color(docx_path: Path) -> None:
     tmp_path = docx_path.with_suffix(docx_path.suffix + ".tmp")
     color_xml_parts = (
@@ -484,7 +501,7 @@ def normalize_docx_text_color(docx_path: Path) -> None:
                     text = re.sub(r'\s*<Relationship\b[^>]*Type="[^"]*/hyperlink"[^>]*/>', "", text)
                     data = text.encode("utf-8")
             dst.writestr(item, data)
-    tmp_path.replace(docx_path)
+    replace_with_retry(tmp_path, docx_path)
 
 
 def next_header_part(names: set[str]) -> tuple[str, str]:
@@ -549,7 +566,7 @@ def add_header_to_existing_docx(docx_path: Path, header_text: str) -> None:
                     data = text.encode("utf-8")
                 dst.writestr(item, data)
             dst.writestr(header_part, header_xml(header_text))
-    tmp_path.replace(docx_path)
+    replace_with_retry(tmp_path, docx_path)
 
 
 def build_code_docx_ooxml(md_path: Path, out_path: Path, software_name: str, version: str) -> None:
